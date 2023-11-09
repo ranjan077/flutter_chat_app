@@ -1,6 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:firebase_core/firebase_core.dart';
-
 
 class AuthScreen extends StatefulWidget {
   const AuthScreen({super.key});
@@ -15,7 +13,7 @@ class _AuthScreen extends State<AuthScreen> {
   final _formKey = GlobalKey<FormState>();
 
   String _enteredEmail = '';
-  String _enteredPassword = ''
+  String _enteredPassword = '';
 
   void _submit() {
     bool isValid = _formKey.currentState!.validate();
@@ -68,7 +66,7 @@ class _AuthScreen extends State<AuthScreen> {
                               },
                             ),
                             TextFormField(
-                               onSaved: (value) {
+                              onSaved: (value) {
                                 _enteredPassword = value!;
                               },
                               validator: (value) {
