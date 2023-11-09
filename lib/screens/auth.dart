@@ -1,4 +1,12 @@
+import 'dart:io';
+
+import 'package:chat_app/widgets/user_image_picker.dart';
+import 'package:firebase_storage/firebase_storage.dart';
 import 'package:flutter/material.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
+
+final _firebase = FirebaseAuth.instance;
 
 class AuthScreen extends StatefulWidget {
   const AuthScreen({super.key});
@@ -14,11 +22,59 @@ class _AuthScreen extends State<AuthScreen> {
 
   String _enteredEmail = '';
   String _enteredPassword = '';
+  String _enteredUserName = '';
+  File? _selectedImage;
+  bool _isAuthenticating = false;
 
-  void _submit() {
+  Future<void> _submit() async {
     bool isValid = _formKey.currentState!.validate();
-    if (isValid) {
-      _formKey.currentState!.save();
+    if (!isValid || (!_isLogin && _selectedImage == null)) {
+      return;
+    }
+
+    _formKey.currentState!.save();
+    try {
+      setState(() {
+        _isAuthenticating = true;
+      });
+      if (_isLogin) {
+        // existing user login
+        final userCredentials = await _firebase.signInWithEmailAndPassword(
+            email: _enteredEmail, password: _enteredPassword);
+        print(userCredentials);
+      } else {
+        // new user creation
+        final userCredentials = await _firebase.createUserWithEmailAndPassword(
+            email: _enteredEmail, password: _enteredPassword);
+
+        // uploading image
+        final storageRef = FirebaseStorage.instance
+            .ref()
+            .child('user_images')
+            .child('${userCredentials.user!.uid}.jpg');
+        await storageRef.putFile(_selectedImage!);
+        final imageURL = await storageRef.getDownloadURL();
+        print(imageURL);
+        await FirebaseFirestore.instance
+            .collection('users')
+            .doc(userCredentials.user!.uid)
+            .set({
+          'username': _enteredUserName,
+          'email': _enteredEmail,
+          'image_url': imageURL,
+        });
+      }
+    } on FirebaseAuthException catch (error) {
+      setState(() {
+        _isAuthenticating = false;
+      });
+      if (error.code == 'email-already-in-use') {}
+      ScaffoldMessenger.of(context).clearSnackBars();
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(error.message ?? 'Authentication failed'),
+        ),
+      );
     }
   }
 
@@ -47,6 +103,14 @@ class _AuthScreen extends State<AuthScreen> {
                         child: Column(
                           mainAxisSize: MainAxisSize.min,
                           children: [
+                            if (!_isLogin)
+                              UserImagePicker(
+                                onPickImage: (pickedImage) {
+                                  setState(() {
+                                    _selectedImage = pickedImage;
+                                  });
+                                },
+                              ),
                             TextFormField(
                               decoration: const InputDecoration(
                                   label: Text('Email address')),
@@ -81,27 +145,48 @@ class _AuthScreen extends State<AuthScreen> {
                                   label: Text('Password')),
                               obscureText: true,
                             ),
+                            if (!_isLogin)
+                              TextFormField(
+                                enableSuggestions: false,
+                                decoration: const InputDecoration(
+                                    label: Text('User name')),
+                                validator: (value) {
+                                  if (value == null ||
+                                      value.trim().isEmpty ||
+                                      value.trim().length < 4) {
+                                    return 'User name must be at least 4 letters long.';
+                                  }
+                                  return null;
+                                },
+                                onSaved: (value) {
+                                  _enteredUserName = value!;
+                                },
+                              ),
                             const SizedBox(
                               height: 12,
                             ),
-                            ElevatedButton(
-                                onPressed: _submit,
-                                style: ElevatedButton.styleFrom(
-                                    backgroundColor: Theme.of(context)
-                                        .colorScheme
-                                        .primaryContainer),
-                                child: _isLogin
-                                    ? const Text('Login')
-                                    : const Text('Sign up')),
-                            TextButton(
-                                onPressed: () {
-                                  setState(() {
-                                    _isLogin = !_isLogin;
-                                  });
-                                },
-                                child: Text(_isLogin
-                                    ? 'Create an account'
-                                    : 'I have already have account. Login')),
+                            if (_isAuthenticating)
+                              const CircularProgressIndicator(),
+                            if (!_isAuthenticating)
+                              ElevatedButton(
+                                  onPressed: _submit,
+                                  style: ElevatedButton.styleFrom(
+                                      backgroundColor: Theme.of(context)
+                                          .colorScheme
+                                          .primaryContainer),
+                                  child: _isLogin
+                                      ? const Text('Login')
+                                      : const Text('Sign up')),
+                            if (!_isAuthenticating)
+                              TextButton(
+                                  onPressed: () {
+                                    setState(() {
+                                      _isLogin = !_isLogin;
+                                    });
+                                  },
+                                  child: Text(_isLogin
+                                      ? 'Create an account'
+                                      : 'I have already have account. Login')),
                           ],
                         )),
                   ),
